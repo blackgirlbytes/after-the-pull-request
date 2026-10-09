@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>After the Pull Request</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+/* ===========================================
+   THEME — Terminal Green
+   Change these variables to re-skin the whole deck.
+   =========================================== */
+:root {
+    --stage-bg: #010409;
+    --slide-bg: #0d1117;
+    --panel: #010409;
+    --line: #21262d;
+    --line-strong: #30363d;
+    --text: #e6edf3;
+    --dim: #7d8590;
+    --green: #39d353;
+    --green-soft: rgba(57, 211, 83, .12);
+    --yellow: #e3b341;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --orange: #ffa657;
+
+    --font: 'JetBrains Mono', monospace;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   Include this ENTIRE file in every presentation.
+   Slides are authored at 1920×1080 and scaled as a whole.
+   =========================================== */
+
+/* 1. Lock the browser viewport */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 2. Full-window deck viewport */
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 3. Fixed 16:9 design canvas.
+   JavaScript sets transform: translate(...) scale(...). */
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+/* 4. Slides stack inside the fixed stage.
+   Content must be laid out at 1920×1080, not reflowed per device. */
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+/* 5. Keep media inside authored slide bounds */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 6. Presentation chrome stays outside the slide design system */
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* 7. Print one fixed-size slide per page */
+@media print {
+    html,
+    body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+    }
+
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .deck-controls {
+        display: none !important;
+    }
+}
+
+/* 8. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+
+/* ===========================================
+   SLIDE SHELL — window chrome, status bar, scanlines
+   =========================================== */
+.slide {
+    font-family: var(--font);
+    color: var(--text);
+    background:
+        radial-gradient(ellipse at 85% 10%, rgba(57, 211, 83, .07), transparent 55%),
+        radial-gradient(ellipse at 10% 100%, rgba(88, 166, 255, .05), transparent 50%),
+        var(--slide-bg);
+    transition: opacity .35s ease, visibility .35s;
+}
+/* CRT scanlines */
+.slide::after {
+    content: "";
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 2px, transparent 2px 4px);
+    z-index: 5;
+}
+/* Top window bar (path is filled in from data-path) */
+.chrome {
+    position: absolute; top: 0; left: 0; right: 0; height: 56px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px; padding: 0 28px;
+    color: var(--dim); font-size: 20px;
+}
+.chrome .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--line-strong); }
+.chrome .path { margin-left: 20px; }
+/* Bottom status bar (vim/tmux style) */
+.status {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 56px;
+    border-top: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; font-size: 19px; color: var(--dim);
+}
+.status .branch { color: var(--panel); background: var(--green); padding: 4px 14px; font-weight: 700; }
+.status .era { color: var(--yellow); }
+
+/* Content area between the two bars */
+.body {
+    position: absolute; top: 56px; bottom: 56px; left: 140px; right: 140px;
+    display: flex; flex-direction: column; justify-content: center;
+}
+.body.top { justify-content: flex-start; padding-top: 110px; }
+
+/* ===========================================
+   TYPOGRAPHY
+   =========================================== */
+.prompt { color: var(--green); font-size: 30px; }
+.prompt::before { content: "$ "; color: var(--dim); }
+.year { font-size: 30px; color: var(--yellow); letter-spacing: 2px; }
+h1 { font-size: 136px; font-weight: 800; line-height: 1.02; letter-spacing: -5px; margin-top: 32px; }
+h2 { font-size: 92px; font-weight: 800; line-height: 1.06; letter-spacing: -3px; margin-top: 28px; }
+h3 { font-size: 44px; font-weight: 700; letter-spacing: -1px; }
+.lede { font-size: 38px; line-height: 1.5; color: var(--dim); margin-top: 40px; max-width: 1400px; }
+.lede b, .lede strong { color: var(--text); font-weight: 500; }
+.g { color: var(--green); } .y { color: var(--yellow); } .r { color: var(--red); }
+.b { color: var(--blue); } .o { color: var(--orange); } .d { color: var(--dim); }
+.cursor {
+    display: inline-block; width: .55em; height: .95em; background: var(--green);
+    vertical-align: -.12em; margin-left: .15em; animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ===========================================
+   COMPONENTS
+   =========================================== */
+/* Terminal pane */
+.term {
+    background: var(--panel); border: 1px solid var(--line-strong); border-radius: 14px;
+    padding: 34px 40px; font-size: 28px; line-height: 1.75; white-space: pre;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+}
+.term .ttl { display: block; color: var(--dim); font-size: 18px; margin: -10px 0 14px; letter-spacing: 1px; }
+
+/* Two-column layout */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 100px; align-items: center; }
+.two.wide-right { grid-template-columns: 0.9fr 1.1fr; }
+
+/* Arrow list */
+.list { list-style: none; margin-top: 44px; }
+.list li { font-size: 36px; line-height: 1.45; padding-left: 56px; position: relative; margin-bottom: 26px; }
+.list li::before { content: "→"; position: absolute; left: 0; color: var(--green); }
+.list li.bad::before { content: "✗"; color: var(--red); }
+
+/* Grid of cards */
+.cards { display: grid; gap: 28px; margin-top: 64px; }
+.cards.c3 { grid-template-columns: repeat(3, 1fr); }
+.cards.c4 { grid-template-columns: repeat(4, 1fr); }
+.cards.c2 { grid-template-columns: repeat(2, 1fr); }
+.card {
+    border: 1px solid var(--line-strong); border-radius: 14px; padding: 40px 38px;
+    background: linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+}
+.card .n { font-size: 22px; color: var(--green); letter-spacing: 2px; }
+.card h3 { margin-top: 22px; font-size: 40px; line-height: 1.2; }
+.card p { margin-top: 18px; font-size: 26px; line-height: 1.5; color: var(--dim); }
+
+/* Big stat */
+.stat .num { font-size: 230px; font-weight: 800; letter-spacing: -10px; line-height: .95; color: var(--green); }
+.stat .lbl { font-size: 34px; color: var(--dim); margin-top: 18px; }
+
+/* Diagram helpers */
+svg text { font-family: var(--font); }
+
+/* ===========================================
+   ANIMATIONS — .reveal elements stagger in when the slide becomes .visible
+   (delays are assigned per-slide by JS in DOM order)
+   =========================================== */
+.reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.reveal-l { opacity: 0; transform: translateX(-40px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.slide.visible .reveal, .slide.visible .reveal-l { opacity: 1; transform: none; }
+
+/* Typewriter lines inside terminals */
+.tw { opacity: 0; }
+.slide.visible .tw { animation: typein .01s forwards; }
+@keyframes typein { to { opacity: 1; } }
+
+/* ===========================================
+   SLIDE-SPECIFIC: Punch card (slide 3)
+   =========================================== */
+.punch {
+    display: grid; grid-template-columns: repeat(40, 22px); gap: 10px 9px;
+    padding: 40px 44px; border: 1px solid var(--line-strong); border-radius: 6px 6px 6px 6px;
+    background: var(--panel); position: relative;
+    clip-path: polygon(48px 0, 100% 0, 100% 100%, 0 100%, 0 48px);
+}
+.punch span { font-size: 18px; color: #30363d; text-align: center; line-height: 30px; }
+.punch span.h { color: transparent; background: var(--green); border-radius: 2px; transform: scaleY(0); transition: transform .2s ease-out; }
+.slide.visible .punch span.h { transform: scaleY(1); }
+
+/* ===========================================
+   SLIDE-SPECIFIC: Centralized diagram (slide 7) — server goes down
+   =========================================== */
+.cvcs .link { stroke: var(--green); stroke-width: 3; transition: stroke .4s; }
+.cvcs .srv rect { fill: var(--green-soft); stroke: var(--green); stroke-width: 3; }
+.cvcs .down-lbl { opacity: 0; }
+.slide.visible .cvcs .link { animation: cut .5s 2.6s forwards; }
+.slide.visible .cvcs .srv rect { animation: srvdown .5s 2.6s forwards; }
+.slide.visible .cvcs .down-lbl { animation: showdown .3s 2.8s forwards; }
+@keyframes cut { to { stroke: var(--red); stroke-dasharray: 10 12; opacity: .55; } }
+@keyframes srvdown { to { fill: rgba(248,81,73,.14); stroke: var(--red); } }
+@keyframes showdown { to { opacity: 1; } }
+
+/* ===========================================
+   SLIDE-SPECIFIC: Distributed mesh (slide 9) — syncing links
+   =========================================== */
+.dvcs .link { stroke: var(--green); stroke-width: 2; stroke-dasharray: 8 10; opacity: .6; animation: flow 1.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -36; } }
+.dvcs .node rect { fill: var(--panel); stroke: var(--green); stroke-width: 3; }
+
+/* ===========================================
+   SLIDE-SPECIFIC: Pull request card (slide 13)
+   =========================================== */
+.pr { border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+.pr .head { padding: 34px 40px; border-bottom: 1px solid var(--line); }
+.pr .title { font-size: 38px; font-weight: 700; }
+.pr .title .d { font-weight: 400; }
+.pr .meta { margin-top: 18px; font-size: 22px; color: var(--dim); display: flex; gap: 18px; align-items: center; }
+.badge { background: #238636; color: #fff; padding: 6px 18px; border-radius: 999px; font-size: 20px; font-weight: 700; }
+.pr .row { padding: 22px 40px; border-bottom: 1px solid var(--line); font-size: 24px; display: flex; gap: 18px; align-items: center; }
+.pr .row:last-child { border-bottom: 0; }
+.av { width: 40px; height: 40px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ===========================================
+   SLIDE-SPECIFIC: Agent swarm (slide 19)
+   =========================================== */
+.swarm .edge { stroke: var(--line-strong); stroke-width: 2; }
+.swarm .pkt { fill: var(--green); }
+.swarm .pkt.y { fill: var(--yellow); }
+.swarm .pkt.b { fill: var(--blue); }
+
+/* ===========================================
+   SLIDE-SPECIFIC: Entire reveal (slide 23)
+   =========================================== */
+.entire-word { font-size: 260px; font-weight: 800; letter-spacing: -14px; line-height: 1; margin-top: 20px; }
+.entire-word .g { text-shadow: 0 0 60px rgba(57,211,83,.35); }
+
+/* ===========================================
+   PROGRESS BAR + INLINE EDIT CHROME (outside the stage)
+   =========================================== */
+.progress { position: fixed; left: 0; top: 0; height: 3px; background: var(--green); z-index: 1000; transition: width .3s var(--ease); }
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle {
+    position: fixed; top: 16px; left: 16px; z-index: 10001;
+    font: 600 14px var(--font); color: var(--panel); background: var(--green);
+    border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer;
+    opacity: 0; pointer-events: none; transition: opacity .3s ease;
+}
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+body.editing [data-editable] { outline: 2px dashed rgba(57,211,83,.5); outline-offset: 6px; cursor: text; }
+.toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 10002; font: 14px var(--font);
+    background: var(--panel); color: var(--green); border: 1px solid var(--line-strong);
+    padding: 12px 16px; border-radius: 8px; opacity: 0; transition: opacity .3s;
+}
+.toast.show { opacity: 1; }
+
+/* ===========================================
+   SPEAKER NOTES — stored per slide in <aside class="notes">, never shown to the audience
+   =========================================== */
+.slide .notes { display: none; }
+
+/* ===========================================
+   PRESENTER VIEW — press P in the audience window to open it.
+   Same file opened with ?presenter; both windows stay in sync.
+   =========================================== */
+.pv {
+    position: fixed; inset: 0; z-index: 2000;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: 56px minmax(0, 1fr);
+    column-gap: 24px; padding: 0 24px 24px;
+    background: var(--stage-bg); color: var(--text); font-family: var(--font);
+}
+.pv[hidden] { display: none; }
+.pv-bar {
+    grid-column: 1 / -1; margin: 0 -24px 20px; padding: 0 24px;
+    display: flex; align-items: center; gap: 32px;
+    border-bottom: 1px solid var(--line); font-size: 15px; color: var(--dim);
+}
+.pv-bar .branch { color: var(--panel); background: var(--green); padding: 4px 12px; font-weight: 700; }
+#pvCount { color: var(--text); font-size: 18px; font-weight: 700; }
+#pvTimer { color: var(--green); font-size: 22px; font-weight: 700; cursor: pointer; }
+#pvTimer::after { content: " ↺"; font-size: 14px; color: var(--dim); }
+.pv-bar .spacer { flex: 1; }
+.pv-bar button {
+    font: 600 14px var(--font); color: var(--text); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+.pv-bar button:hover { border-color: var(--green); color: var(--green); }
+.pv-left { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: hidden; }
+.pv-label { font-size: 13px; letter-spacing: 2px; color: var(--dim); }
+.pv-label.now { color: var(--green); }
+.pv-screen {
+    position: relative; overflow: hidden; flex: none;
+    width: 100%; aspect-ratio: 16 / 9;
+    border: 1px solid var(--line-strong); border-radius: 8px; background: var(--slide-bg);
+}
+.pv-screen.small { width: 60%; opacity: .85; }
+.pv-end { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 18px; }
+.pv-notes { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+#pvNotes {
+    flex: 1; overflow: auto; white-space: pre-wrap;
+    font-size: var(--pv-font, 28px); line-height: 1.6;
+    padding: 28px 34px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel);
+}
+#pvNotes.empty { color: var(--dim); font-style: italic; }
+.pv-bar { white-space: nowrap; overflow: hidden; }
+/* Narrow presenter window: stack slide previews above the notes */
+@media (max-width: 900px) {
+    .pv { grid-template-columns: minmax(0, 1fr); grid-template-rows: 56px auto minmax(0, 1fr); row-gap: 16px; }
+    .pv-bar { gap: 16px; margin-bottom: 0; }
+    .pv-bar .spacer, #pvClock { display: none; }
+    .pv-left { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; }
+    .pv-left .pv-label { display: none; }
+    .pv-screen { width: calc(58% - 6px); }
+    .pv-screen.small { width: calc(42% - 6px); }
+}
+body.presenter .deck-viewport,
+body.presenter .progress { display: none; }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)">EDIT</button>
+<div class="toast" id="toast"></div>
+
+<!-- =========================================================
+     PRESENTER VIEW SHELL (only shown when opened with ?presenter)
+     ========================================================= -->
+<div class="pv" id="pv" hidden>
+  <header class="pv-bar">
+    <span class="branch">⎇ presenter</span>
+    <span id="pvCount">01 / 27</span>
+    <span id="pvTimer" title="Click to reset timer">00:00</span>
+    <span id="pvClock"></span>
+    <span class="spacer"></span>
+    <button id="pvPrev" title="Previous (←)">← prev</button>
+    <button id="pvNext" title="Next (→)">next →</button>
+    <button id="pvSmaller" title="Smaller notes">A−</button>
+    <button id="pvBigger" title="Bigger notes">A+</button>
+  </header>
+  <div class="pv-left">
+    <div class="pv-label now">NOW</div>
+    <div class="pv-screen" id="pvCurrent"></div>
+    <div class="pv-label">NEXT</div>
+    <div class="pv-screen small" id="pvNextSlide"></div>
+  </div>
+  <div class="pv-notes">
+    <div class="pv-label">TALK TRACK</div>
+    <div id="pvNotes"></div>
+  </div>
+</div>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- =========================================================
+     01 · TITLE
+     ========================================================= -->
+<section class="slide" data-path="~/after-the-pull-request" data-era="intro">
+  <div class="body">
+    <div class="prompt reveal">git log --reverse --oneline</div>
+    <h1 class="reveal" style="font-size:160px">After the<br><span class="g">Pull Request</span></h1>
+    <p class="lede reveal">From punch cards to pull requests, and what comes next<span class="cursor"></span></p>
+  </div>
+  <div class="reveal" style="position:absolute;right:140px;bottom:130px;font-size:24px;line-height:1.9;color:var(--dim)">
+    <div><span class="y">1950s</span>  punch cards</div>
+    <div><span class="y">1982 </span>  RCS</div>
+    <div><span class="y">2000 </span>  CVS / SVN</div>
+    <div><span class="y">2005 </span>  git</div>
+    <div><span class="y">2008 </span>  GitHub</div>
+    <div><span class="y">2025 </span>  <span class="g">???</span></div>
+  </div>
+<aside class="notes"></aside>
+</section>
+
+<!-- =========================================================
+     02 · SETUP
+     ========================================================= -->
+<section class="slide" data-path="~/history-of-version-control" data-era="intro">
+  <div class="body">
+    <div class="prompt reveal">cd ../../../..</div>
+    <h2 class="reveal" style="max-width:1500px">To understand what I'm showing you today…</h2>
+    <p class="lede reveal">we need to talk about the <b>history of version control.</b></p>
+    <p class="lede reveal g" style="margin-top:60px">Let's go.<span class="cursor"></span></p>
+  </div>
+<aside class="notes">To understand what im going to show you today, we need to talk about the history of version control.
+
+Lets go. </aside>
+</section>
+
+<!-- =========================================================
+     03 · 1950s — PUNCH CARDS
+     ========================================================= -->
+<section class="slide" data-path="~/history/01-punch-cards" data-era="1950s">
+  <div class="body">
+    <div class="year reveal">// 1950s</div>
+    <h2 class="reveal">Code was <span class="g">holes</span> in cardboard.</h2>
+    <div class="reveal" style="margin-top:60px"><div class="punch" id="punch"></div></div>
+    <p class="lede reveal">Finding bugs? Sharing work? Good luck deciphering a <b>matrix of holes.</b></p>
+  </div>
+<aside class="notes">Back in the 1950s, computer scientists used punch cards. Literal cardboard cards that they would punch holes in. Dont ask me how it worked..I wasn’t born then, but to my understanding  this is how they would make changes in the code. Finding bugs, sharing your work..had to be a pain because they had to decipher from a matrix of holes.</aside>
+</section>
+
+<!-- =========================================================
+     04 · 1980s/90s — DIGITAL, BUT OVERWRITES
+     ========================================================= -->
+<section class="slide" data-path="~/history/02-going-digital" data-era="1980s–90s">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="year reveal">// 1980s–90s</div>
+        <h2 class="reveal">Code went digital.</h2>
+        <p class="lede reveal">Teams grew. Developers started <b>stepping on each other's toes</b> and overwriting each other's work.</p>
+      </div>
+      <div class="term reveal"><span class="ttl">shared-drive/main.c</span><span class="d">[09:14]</span> <span class="b">alice</span>  saved  main.c
+<span class="d">[09:15]</span> <span class="o">bob</span>    saved  main.c
+<span class="d">[09:16]</span> <span class="b">alice</span>  <span class="r">wait… where did my code go??</span></div>
+    </div>
+  </div>
+<aside class="notes">Luckily, in the 1980s/1990s things went digital but a new problem arose. As engineering teams grew, developers started stepping on each other's toes, constantly overwriting each other's work..</aside>
+</section>
+
+<!-- =========================================================
+     05 · RCS — LOCK IT DOWN
+     ========================================================= -->
+<section class="slide" data-path="~/history/03-rcs" data-era="1982 · RCS">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="year reveal">// RCS · Revision Control System</div>
+        <h2 class="reveal">Check it out.<br>Lock it down.</h2>
+        <p class="lede reveal">While you held the key, <b>no one in the company</b> could touch that file.</p>
+      </div>
+      <div class="term reveal"><span class="ttl">alice@workstation</span><span class="g">$</span> co -l main.c
+main.c  -->  checked out, <span class="y">🔒 locked</span>
+
+<span class="ttl" style="margin-top:20px">bob@workstation</span><span class="g">$</span> co -l main.c
+<span class="r">co error: main.c locked by alice</span></div>
+    </div>
+    <p class="reveal" style="font-size:52px;font-weight:800;margin-top:70px">No more stepped-on toes. <span class="r">But slow af.</span></p>
+  </div>
+<aside class="notes">So they invented  RCS (Revision Control System).  If you wished to change a file, you had to check it out and lock it down. While you held that key, no one  in the company could touch it. This avoided the issue of stepping on each others toes but it made work slow af .</aside>
+</section>
+
+<!-- =========================================================
+     06 · CVS / SVN — WORK AT ONCE, CONFLICTS
+     ========================================================= -->
+<section class="slide" data-path="~/history/04-cvs-svn" data-era="1990s–2000s · CVS / SVN">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="year reveal">// CVS &amp; Subversion</div>
+        <h2 class="reveal">Everyone works at the same time.</h2>
+        <p class="lede reveal">Grab a copy from the central server, work at your own desk. Until you and a teammate change <b>the exact same line.</b></p>
+      </div>
+      <div class="term reveal"><span class="ttl">svn update — conflict in cart.c</span><span class="r">&lt;&lt;&lt;&lt;&lt;&lt;&lt; .mine</span>
+total = price * qty;
+<span class="d">=======</span>
+total = price * qty * tax;
+<span class="r">&gt;&gt;&gt;&gt;&gt;&gt;&gt; .r42</span>
+
+<span class="y">C</span>  cart.c   <span class="d">← you fix it</span></div>
+    </div>
+  </div>
+<aside class="notes">So they created version control systems such as  CVS and Subversion (SVN).
+Now, everyone could request a copy of the files from a central server and work at their own desks simultaneously. Of course if you and a teammate changed the exact same line at the same time, a conflict would occur and you had to fix it. </aside>
+</section>
+
+<!-- =========================================================
+     07 · HOW CENTRALIZED VCS WORKS (diagram)
+     ========================================================= -->
+<section class="slide" data-path="~/history/04-cvs-svn/how-it-works" data-era="centralized">
+  <div class="body">
+    <div class="two wide-right">
+      <div>
+        <div class="year reveal">// how it works</div>
+        <h2 class="reveal">Centralized version control</h2>
+        <ul class="list">
+          <li class="reveal">One main copy of the code lives on a <span class="g">central server.</span></li>
+          <li class="reveal">Everyone connects to that server to make and share changes.</li>
+          <li class="reveal bad">Server goes down → <span class="r">collaboration stops.</span></li>
+        </ul>
+      </div>
+      <svg class="cvcs reveal" viewBox="0 0 820 760" width="820" height="760">
+        <!-- links -->
+        <line class="link" x1="410" y1="380" x2="410" y2="90"/>
+        <line class="link" x1="410" y1="380" x2="120" y2="250"/>
+        <line class="link" x1="410" y1="380" x2="700" y2="250"/>
+        <line class="link" x1="410" y1="380" x2="170" y2="630"/>
+        <line class="link" x1="410" y1="380" x2="650" y2="630"/>
+        <!-- server -->
+        <g class="srv">
+          <rect x="300" y="310" width="220" height="140" rx="12"/>
+          <text x="410" y="372" text-anchor="middle" fill="#e6edf3" font-size="28" font-weight="700">server</text>
+          <text x="410" y="410" text-anchor="middle" fill="#7d8590" font-size="20">the one copy</text>
+        </g>
+        <text class="down-lbl" x="410" y="490" text-anchor="middle" fill="#f85149" font-size="26" font-weight="700">503 · DOWN</text>
+        <!-- clients -->
+        <g fill="#010409" stroke="#30363d" stroke-width="2">
+          <rect x="340" y="40" width="140" height="80" rx="10"/>
+          <rect x="40" y="210" width="160" height="80" rx="10"/>
+          <rect x="620" y="210" width="160" height="80" rx="10"/>
+          <rect x="90" y="590" width="160" height="80" rx="10"/>
+          <rect x="570" y="590" width="160" height="80" rx="10"/>
+        </g>
+        <g fill="#7d8590" font-size="22" text-anchor="middle">
+          <text x="410" y="88">dev</text><text x="120" y="258">dev</text><text x="700" y="258">dev</text>
+          <text x="170" y="638">dev</text><text x="650" y="638">dev</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+<aside class="notes">Here’s how central version control works:
+ • There's one main copy of the code on a central server.
+
+* Everyone connects to that server to make and share changes.
+
+* If the server goes down, collaboration is disrupted.</aside>
+</section>
+
+<!-- =========================================================
+     08 · 2005 — LINUX + BITKEEPER
+     ========================================================= -->
+<section class="slide" data-path="~/history/05-linux" data-era="2005 · Linux">
+  <div class="body">
+    <div class="year reveal">// fast forward to 2005</div>
+    <h2 class="reveal" style="max-width:1550px">Linux: a <span class="g">huge</span> open source project, built by people all over the world.</h2>
+    <p class="lede reveal">Instead of a centralized system, they used a <b>distributed</b> one called <span class="y">BitKeeper</span>, a paid, licensed platform.</p>
+  </div>
+  <div id="worldDots" style="position:absolute;right:120px;top:120px;width:620px;height:300px;opacity:.9"></div>
+<aside class="notes">Fast forward to 2005, and the linux operating system is born. It’s this huge open source project (still huge today) and  people all over the world were building  it it.
+ Instead of using a centralized version control system, they had to use a distributed version control system called Bitkeeper.  Bitkeeper was a paid licensed platform. This was preferred because: </aside>
+</section>
+
+<!-- =========================================================
+     09 · HOW DISTRIBUTED VCS WORKS (diagram)
+     ========================================================= -->
+<section class="slide" data-path="~/history/05-linux/distributed" data-era="distributed">
+  <div class="body">
+    <div class="two wide-right">
+      <div>
+        <div class="year reveal">// why distributed won</div>
+        <h2 class="reveal">Distributed version control</h2>
+        <ul class="list">
+          <li class="reveal">Everyone has their own <span class="g">complete copy</span> of the code and its history.</li>
+          <li class="reveal">Make changes and commits <span class="g">without internet.</span></li>
+          <li class="reveal">Sync with others <span class="g">when you're ready.</span></li>
+        </ul>
+      </div>
+      <svg class="dvcs reveal" viewBox="0 0 820 760" width="820" height="760" id="mesh"></svg>
+    </div>
+  </div>
+<aside class="notes">Everyone has their own complete copy of the code and its history.
+You can make changes and commits without internet access.
+You sync your changes with others when you're ready.</aside>
+</section>
+
+<!-- =========================================================
+     10 · THE BEEF
+     ========================================================= -->
+<section class="slide" data-path="~/history/05-linux/drama" data-era="2005 · the beef">
+  <div class="body">
+    <div class="year reveal">// then…</div>
+    <h2 class="reveal">The Linux maintainers got into <span class="r">beef</span> with BitKeeper.</h2>
+    <div class="term reveal" style="margin-top:60px;max-width:1300px"><span class="g">$</span> bk clone linux
+<span class="r">ERROR: license revoked.</span>
+<span class="r">bitkeeper: you can't have access to this anymore.</span></div>
+  </div>
+<aside class="notes">But the maintainers of the linux operating system got into beef with the creators of Bitkeeper and Bitkeeper said you can t have access to this anymore. </aside>
+</section>
+
+<!-- =========================================================
+     11 · GIT IS BORN
+     ========================================================= -->
+<section class="slide" data-path="~/history/06-git" data-era="2005 · git">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="prompt reveal">git init</div>
+        <h2 class="reveal">So Linus Torvalds built his own: <span class="g">Git.</span></h2>
+        <p class="lede reveal">An alternative to BitKeeper, from the creator of Linux.</p>
+      </div>
+      <div class="stat reveal" style="text-align:right">
+        <div class="d" style="font-size:28px">rumor has it, built in</div>
+        <div class="num" style="font-size:180px;white-space:nowrap">10 days<span class="y" style="font-size:110px">*</span></div>
+        <div class="lbl">*idk if that's actually true lol</div>
+      </div>
+    </div>
+  </div>
+<aside class="notes">So Linus Torvalds the creator of the Linux operating system made an alternative to Bitkeeper called Git. Rumor has it: he built in 10 days..now I dont know if thats actually true lol. But thats what people say. </aside>
+</section>
+
+<!-- =========================================================
+     12 · GIT ADOPTION WAS SLOW
+     ========================================================= -->
+<section class="slide" data-path="~/history/06-git/adoption" data-era="2005–2008">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="year reveal">// adoption took a while</div>
+        <h2 class="reveal">Only the <span class="g">real nerds</span> got it.</h2>
+        <p class="lede reveal">A bunch of commands. Documentation was <b>mid.</b></p>
+      </div>
+      <div class="term reveal"><span class="g">$</span> git rebase -i HEAD~3
+<span class="g">$</span> git reflog
+<span class="g">$</span> git cherry-pick 4f2a9c1
+<span class="g">$</span> git reset --hard HEAD@{2}
+<span class="g">$</span> git submodule update --init --recursive
+<span class="d"># …wait, what did I just do</span></div>
+    </div>
+  </div>
+<aside class="notes">And it took awhile for people to truly adopt git. It was a bunch commands, documentation was mid, and only the real nerds were good at using it.</aside>
+</section>
+
+<!-- =========================================================
+     13 · 2008 — GITHUB + THE PULL REQUEST
+     ========================================================= -->
+<section class="slide" data-path="~/history/07-github" data-era="2008 · GitHub">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="year reveal">// 2008</div>
+        <h2 class="reveal">GitHub changes the <span class="g">entire</span> game.</h2>
+        <p class="lede reveal">An interface on top of git that makes things easy to see. And a brand-new idea: <b>the pull request.</b></p>
+      </div>
+      <div class="pr reveal">
+        <div class="head">
+          <div class="title">Add search to dashboard <span class="d">#1</span></div>
+          <div class="meta"><span class="badge">Open</span> wants to merge 3 commits into <span class="b">main</span></div>
+        </div>
+        <div class="row"><span class="av" style="background:#58a6ff"></span><span><b>teammate</b> <span class="d">commented:</span> nice! could we cache this?</span></div>
+        <div class="row"><span class="av" style="background:#ffa657"></span><span><b>maintainer</b> <span class="g">approved</span> these changes</span></div>
+        <div class="row"><span class="g">+42</span> <span class="r">−7</span> <span class="d">· 3 files changed</span></div>
+      </div>
+    </div>
+  </div>
+<aside class="notes">2008 - GitHub changes the entire game. They put in an interface on top of git..make it easy to visualize things. And they create this idea of the pull request.</aside>
+</section>
+
+<!-- =========================================================
+     14 · THE PR AS A RITUAL
+     ========================================================= -->
+<section class="slide" data-path="~/history/07-github/pull-requests" data-era="2008 · GitHub">
+  <div class="body">
+    <h2 class="reveal">The pull request became a <span class="g">ritual.</span></h2>
+    <div class="cards c4">
+      <div class="card reveal"><div class="n">01</div><h3>Teams taught each other</h3></div>
+      <div class="card reveal"><div class="n">02</div><h3>Argued for taste</h3></div>
+      <div class="card reveal"><div class="n">03</div><h3>Caught mistakes</h3></div>
+      <div class="card reveal"><div class="n">04</div><h3>Built shared standards</h3></div>
+    </div>
+  </div>
+<aside class="notes">The pull request became a ritual. It was where teams taught each other, argued for taste, caught mistakes, and built shared standards.</aside>
+</section>
+
+<!-- =========================================================
+     15 · PERSONAL NOTE
+     ========================================================= -->
+<section class="slide" data-path="~/history/07-github/me" data-era="2008 · GitHub">
+  <div class="body">
+    <div class="prompt reveal">cat ~/.feelings</div>
+    <h1 class="reveal" style="font-size:150px">I love GitHub.</h1>
+    <p class="lede reveal" style="font-size:46px">I used to work there. It's where so many developer stories — and communities — <b>truly started.</b></p>
+  </div>
+<aside class="notes">I love GitHub. I used to work there. It’s where every developer story and community truly started.</aside>
+</section>
+
+<!-- =========================================================
+     16 · 2025 — MODELS GOT GOOD
+     ========================================================= -->
+<section class="slide" data-path="~/now" data-era="2025">
+  <div class="body">
+    <div class="year reveal">// but now, in 2025</div>
+    <h1 class="reveal">Models got <span class="g">good.</span></h1>
+    <p class="lede reveal">They used to kinda suck. Now they generate <b>full features in one go</b>, which means pull requests are way harder to read and keep up with.</p>
+  </div>
+<aside class="notes">But now in 2025, everything changed. Models got good. First they used to kinda suck but now they actually can generate full features in one go. That means pull requests are harder to read and keep up with.</aside>
+</section>
+
+<!-- =========================================================
+     17 · GOOSE NUMBERS
+     ========================================================= -->
+<section class="slide" data-path="~/now/goose" data-era="2025 · goose">
+  <div class="body">
+    <div class="year reveal">// a project I maintain: goose</div>
+    <div class="two" style="margin-top:50px;grid-template-columns:1.5fr 1fr">
+      <div class="stat reveal"><div class="num">80–200</div><div class="lbl">pull requests a day to burn down</div></div>
+      <div class="stat reveal"><div class="num">75</div><div class="lbl">files changed per pull request</div></div>
+    </div>
+    <p class="reveal" style="font-size:52px;font-weight:800;margin-top:90px">No one can realistically keep up with that.</p>
+  </div>
+<aside class="notes">I maintain a project called goose..and we would have like consistently 80-200 pull requests each day that we’re trying to burn down..and the pull requests would be like 75 files changed. No one can realistically keep up with that.</aside>
+</section>
+
+<!-- =========================================================
+     18 · LOOKS RIGHT, IS IT RIGHT?
+     ========================================================= -->
+<section class="slide" data-path="~/now/goose/review" data-era="2025 · review">
+  <div class="body">
+    <div class="two">
+      <div>
+        <div class="year reveal">// what actually happens</div>
+        <h2 class="reveal">It <span class="g">looks</span> right.<br>Is it <span class="y">actually</span> right?</h2>
+        <p class="lede reveal">I'm overwhelmed. An agent wrote it, so it looks fine, so I merge. <b>This is the case for many engineers.</b></p>
+      </div>
+      <div class="term reveal"><span class="ttl">review #4,812 — 75 files changed</span><span class="g">✓</span> syntactically correct
+<span class="g">✓</span> CI passed
+<span class="y">?</span> actually correct
+<span class="g">$</span> git merge
+<span class="d">…sometimes it's fine.</span>
+<span class="r">…sometimes things break.</span></div>
+    </div>
+  </div>
+<aside class="notes">And what ends up happening is that I’m overwhelmed and I feel that okay they used an agent so it look syntactically correct to me, but Idk if its actually correct. And I merge it..and sometimes things break..sometiimes things dont. This is the case with many engineers. </aside>
+</section>
+
+<!-- =========================================================
+     19 · GITHUB INFRA UNDER PRESSURE (swarm diagram)
+     ========================================================= -->
+<section class="slide" data-path="~/now/infra" data-era="2025 · infra">
+  <div class="body">
+    <div class="two wide-right">
+      <div>
+        <div class="year reveal">// it's not just humans</div>
+        <h2 class="reveal">GitHub's servers can't keep up either.</h2>
+        <p class="lede reveal"><b class="g">180M</b> users. Many running <b>swarms of agents</b> in parallel: 4 PRs at once, opening issues, running searches.</p>
+      </div>
+      <svg class="swarm reveal" viewBox="0 0 860 700" width="860" height="700" id="swarm"></svg>
+    </div>
+  </div>
+<aside class="notes">And it’s not just humans that can’t keep up with it. GitHub’s infrastructure is struggling too. Have you noticed that GitHub is often down for hours?  GitHub has 180 million users. Many of these users are using agents. Many of these users are using swarms of agents working in parallel at a fast speed. This means when you have someone thats sending out an agent to work on 4 pull requests at the same time..open up issues..do searches..githubs servers are under so much pressure..</aside>
+</section>
+
+<!-- =========================================================
+     20 · THE RESULT — ERRORS
+     ========================================================= -->
+<section class="slide" data-path="~/now/infra" data-era="2025 · infra">
+  <div class="body">
+    <div class="prompt reveal">curl api.github.com</div>
+    <h2 class="reveal">"ayooo… I cannot keep up with all of this."</h2>
+    <div class="cards c3">
+      <div class="card reveal"><div class="n r">429</div><h3>Rate limits</h3><p>Too many requests.</p></div>
+      <div class="card reveal"><div class="n y">8,214 ms</div><h3>Latency</h3><p>a.k.a. slow speed.</p></div>
+      <div class="card reveal"><div class="n r">503</div><h3>Down for hours</h3><p>Have you noticed?</p></div>
+    </div>
+  </div>
+<aside class="notes">theyre like ayooo..I cannot keep up with all of this. And then you as a user get hit with rate limits, latency aka slow speed, or GitHub just goes down overall.</aside>
+</section>
+
+<!-- =========================================================
+     21 · STATEMENT
+     ========================================================= -->
+<section class="slide" data-path="~/now" data-era="2025">
+  <div class="body">
+    <h2 class="reveal" style="font-size:110px">Your agents made you <span class="g">faster.</span></h2>
+    <h2 class="reveal" style="font-size:110px;margin-top:20px">GitHub is <span class="r">slowing you down.</span></h2>
+  </div>
+<aside class="notes">So even though your agents made you more productive, GitHub is kinda slowing you down. </aside>
+</section>
+
+<!-- =========================================================
+     22 · TWO PROBLEMS
+     ========================================================= -->
+<section class="slide" data-path="~/next" data-era="the fix">
+  <div class="body">
+    <div class="year reveal">// so the former CEO of GitHub set out to fix two problems</div>
+    <div class="cards c2">
+      <div class="card reveal" style="padding:56px 50px"><div class="n r">ISSUE #1</div><h3 style="font-size:56px">GitHub keeps going down.</h3></div>
+      <div class="card reveal" style="padding:56px 50px"><div class="n r">ISSUE #2</div><h3 style="font-size:56px">Pull requests are too hard for humans to review.</h3></div>
+    </div>
+  </div>
+<aside class="notes">So the former CEO of GitHub wanted to fix  the two problems of:
+- GitHub often going down
+
+* Pull requests being hard to review for humans</aside>
+</section>
+
+<!-- =========================================================
+     23 · ENTIRE
+     ========================================================= -->
+<section class="slide" data-path="~/next/entire" data-era="Entire">
+  <div class="body">
+    <div class="prompt reveal">so he built…</div>
+    <div class="entire-word reveal"><span class="g">Entire</span>.<span class="cursor"></span></div>
+    <p class="lede reveal">A <b>code forge</b>, like GitHub. It hosts your repositories, with some extra perks.</p>
+  </div>
+<aside class="notes">So he built Entire.
+
+Entire is a code forge like GitHub. It hosts repositories for you, and it has some extra perks.</aside>
+</section>
+
+<!-- =========================================================
+     24 · THE PERKS
+     ========================================================= -->
+<section class="slide" data-path="~/next/entire/features" data-era="Entire">
+  <div class="body">
+    <h2 class="reveal">What makes it different</h2>
+    <div class="cards c3">
+      <div class="card reveal"><div class="n">01 · DISTRIBUTED</div><h3>Built for agent traffic</h3><p>Set up to handle swarms of agents, not just humans clicking around.</p></div>
+      <div class="card reveal"><div class="n">02 · SESSIONS</div><h3>Agent memory</h3><p>Saves your sessions with your agent, so past conversations become memory.</p></div>
+      <div class="card reveal"><div class="n">03 · REVIEW</div><h3>A new way to review code</h3><p>A completely new take on code review.</p></div>
+    </div>
+  </div>
+<aside class="notes">For example:
+
+* It’s distributed so its set up to handle agent traffic
+* It save the sessions you’ve had with your agent so that can act as memory for your agent on past conversations you’ve had
+* It introduces a completely new way to do code review</aside>
+</section>
+
+<!-- =========================================================
+     25 · DEMO
+     ========================================================= -->
+<section class="slide" data-path="~/next/entire" data-era="demo">
+  <div class="body">
+    <div class="prompt reveal">./demo.sh</div>
+    <h1 class="reveal" style="font-size:180px">Let me show you.<span class="cursor"></span></h1>
+  </div>
+<aside class="notes">Imma show you how. Demo</aside>
+</section>
+
+<!-- =========================================================
+     26 · WHY THIS MATTERS
+     ========================================================= -->
+<section class="slide" data-path="~/next" data-era="what's next">
+  <div class="body">
+    <div class="year reveal">// why I'm showing you this</div>
+    <h2 class="reveal" style="max-width:1600px">The way we host and review code <span class="g">won't last forever.</span></h2>
+    <div class="term reveal" style="margin-top:56px;max-width:1300px"><span class="g">$</span> who-makes-the-change --candidates
+  github        <span class="d"># maybe</span>
+  cursor origin <span class="d"># maybe</span>
+  entire        <span class="d"># maybe</span>
+<span class="y">→ idk who. but a change is happening.</span></div>
+    <p class="lede reveal">I want you all to <b>stay up</b> on where the industry is going.</p>
+  </div>
+<aside class="notes">Now, I show this because I want you guys to stay up today. Idk IF Entire will for sure become the primary way that we store code and review code, but a change is happening. Maybe GitHub is the one to make that change..maybe cursor cuz they created a similar platform called cursor origin but the way we host and review code won’t last forever, and I want you all to be up to date with industry standards.</aside>
+</section>
+
+<!-- =========================================================
+     27 · THANKS
+     ========================================================= -->
+<section class="slide" data-path="~" data-era="EOF">
+  <div class="body">
+    <div class="prompt reveal">exit</div>
+    <h1 class="reveal" style="font-size:180px">Thanks!</h1>
+    <p class="lede reveal" style="font-size:48px">Questions?<span class="cursor"></span></p>
+  </div>
+<aside class="notes">Thats all I have . Let me know if you have questions. Thanks !</aside>
+</section>
+
+</main>
+</div>
+
+<script>
+/* ===========================================
+   SLIDE CHROME — inject window bar + status bar into each slide
+   from its data-path / data-era attributes
+   =========================================== */
+const slides = [...document.querySelectorAll('.slide')];
+slides.forEach((s, i) => {
+    s.insertAdjacentHTML('afterbegin',
+        `<div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="path">${s.dataset.path || '~'}</span></div>`);
+    s.insertAdjacentHTML('beforeend',
+        `<div class="status"><span><span class="branch">⎇ main</span></span><span class="era">${s.dataset.era || ''}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>`);
+    // Stagger .reveal children in DOM order
+    s.querySelectorAll('.reveal, .reveal-l').forEach((el, j) => el.style.transitionDelay = (0.08 + j * 0.12) + 's');
+});
+
+/* ===========================================
+   VISUALS BUILT IN JS
+   =========================================== */
+// Punch card: 12 rows × 40 columns, random punched holes
+(() => {
+    const p = document.getElementById('punch');
+    const rows = ['12', '11', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    let n = 0;
+    rows.slice(2).forEach(r => {
+        for (let c = 0; c < 40; c++) {
+            const e = document.createElement('span');
+            e.textContent = r;
+            if (Math.random() < .14) { e.className = 'h'; e.style.transitionDelay = (0.6 + n++ * 0.008) + 's'; }
+            p.appendChild(e);
+        }
+    });
+})();
+
+// World dots (contributors around the globe)
+(() => {
+    const w = document.getElementById('worldDots');
+    const svg = ['<svg viewBox="0 0 620 300" width="620" height="300">'];
+    for (let y = 10; y < 300; y += 20) for (let x = 10; x < 620; x += 20) {
+        // rough continent-ish blobs
+        const v = Math.sin(x / 70) * Math.cos(y / 55) + Math.sin((x + y) / 90);
+        if (v > .35) {
+            const lit = Math.random() < .3;
+            svg.push(`<circle cx="${x}" cy="${y}" r="${lit ? 5 : 4}" fill="${lit ? '#39d353' : '#30363d'}">${lit ? `<animate attributeName="opacity" values="1;.25;1" dur="${1.5 + Math.random() * 2}s" repeatCount="indefinite"/>` : ''}</circle>`);
+        }
+    }
+    svg.push('</svg>');
+    w.innerHTML = svg.join('');
+})();
+
+// Distributed mesh: 6 nodes, every node holds full history (commit dots)
+(() => {
+    const m = document.getElementById('mesh');
+    const cx = 410, cy = 380, R = 290, N = 6;
+    const pts = [...Array(N)].map((_, i) => [cx + R * Math.cos(i * 2 * Math.PI / N - Math.PI / 2), cy + R * Math.sin(i * 2 * Math.PI / N - Math.PI / 2)]);
+    let h = '';
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++)
+        h += `<line class="link" x1="${pts[i][0]}" y1="${pts[i][1]}" x2="${pts[j][0]}" y2="${pts[j][1]}" style="animation-delay:${-(i + j) * .2}s"/>`;
+    pts.forEach(([x, y]) => {
+        h += `<g class="node"><rect x="${x - 80}" y="${y - 44}" width="160" height="88" rx="12"/>`;
+        for (let k = 0; k < 4; k++) h += `<circle cx="${x - 48 + k * 32}" cy="${y}" r="9" fill="${k === 3 ? '#39d353' : '#7d8590'}"/>`;
+        h += `<line x1="${x - 48}" y1="${y}" x2="${x + 48}" y2="${y}" stroke="#7d8590" stroke-width="3" style="mix-blend-mode:screen"/></g>`;
+    });
+    h += `<text x="${cx}" y="${cy + 10}" text-anchor="middle" fill="#7d8590" font-size="22">full copy everywhere</text>`;
+    m.innerHTML = h;
+})();
+
+// Agent swarm: you → 4 agents → github.com, with packets flooding the server
+(() => {
+    const s = document.getElementById('swarm');
+    const you = [90, 350], srv = [740, 350];
+    const agents = [[360, 110], [360, 270], [360, 430], [360, 590]];
+    let h = '';
+    agents.forEach(a => {
+        h += `<line class="edge" x1="${you[0]}" y1="${you[1]}" x2="${a[0]}" y2="${a[1]}"/>`;
+        h += `<line class="edge" x1="${a[0]}" y1="${a[1]}" x2="${srv[0]}" y2="${srv[1]}"/>`;
+    });
+    const kinds = ['', 'y', 'b'];
+    agents.forEach((a, i) => {
+        for (let k = 0; k < 5; k++) {
+            const dur = (0.9 + Math.random() * 0.6).toFixed(2);
+            h += `<rect class="pkt ${kinds[k % 3]}" width="12" height="12" x="-6" y="-6"><animateMotion dur="${dur}s" begin="${(k * dur / 5 + i * .1).toFixed(2)}s" repeatCount="indefinite" path="M${a[0]},${a[1]} L${srv[0]},${srv[1]}"/></rect>`;
+        }
+    });
+    h += `<circle cx="${you[0]}" cy="${you[1]}" r="52" fill="#010409" stroke="#e6edf3" stroke-width="3"/><text x="${you[0]}" y="${you[1] + 8}" text-anchor="middle" fill="#e6edf3" font-size="24">you</text>`;
+    ['PRs', 'issues', 'search', 'PRs'].forEach((t, i) => {
+        const a = agents[i];
+        h += `<rect x="${a[0] - 70}" y="${a[1] - 34}" width="140" height="68" rx="10" fill="#010409" stroke="#39d353" stroke-width="2"/><text x="${a[0]}" y="${a[1] - 4}" text-anchor="middle" fill="#39d353" font-size="20">agent ${i + 1}</text><text x="${a[0]}" y="${a[1] + 22}" text-anchor="middle" fill="#7d8590" font-size="16">${t}</text>`;
+    });
+    h += `<rect x="${srv[0] - 100}" y="${srv[1] - 80}" width="200" height="160" rx="14" fill="rgba(248,81,73,.1)" stroke="#f85149" stroke-width="3"><animate attributeName="stroke-opacity" values="1;.3;1" dur=".8s" repeatCount="indefinite"/></rect>`;
+    h += `<text x="${srv[0]}" y="${srv[1] - 8}" text-anchor="middle" fill="#e6edf3" font-size="24" font-weight="700">github.com</text><text x="${srv[0]}" y="${srv[1] + 28}" text-anchor="middle" fill="#f85149" font-size="20">under pressure</text>`;
+    s.innerHTML = h;
+})();
+
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   Keyboard, touch, wheel, stage scaling, progress bar, URL hash
+   =========================================== */
+const IS_PRESENTER = new URLSearchParams(location.search).has('presenter');
+
+// Scale a 1920×1080 stage to fit a host element (or the window when host is null)
+function fitStage(stage, host) {
+    const W = host ? host.clientWidth : innerWidth;
+    const H = host ? host.clientHeight : innerHeight;
+    const k = Math.min(W / 1920, H / 1080);
+    stage.style.transform = `translate(${(W - 1920 * k) / 2}px, ${(H - 1080 * k) / 2}px) scale(${k})`;
+}
+
+class SlidePresentation {
+    constructor() {
+        this.slides = slides;
+        this.stage = document.getElementById('deckStage');
+        this.progress = document.getElementById('progress');
+        this.host = null;          // presenter view moves the stage into its "NOW" pane
+        this.current = 0;
+        this.onChange = () => {};  // hook used by the sync + presenter code below
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+        const fromHash = parseInt(location.hash.slice(1), 10);
+        this.show(Number.isFinite(fromHash) ? fromHash - 1 : 0, true);
+    }
+    setupStageScale() {
+        this.rescale = () => fitStage(this.stage, this.host);
+        this.rescale();
+        addEventListener('resize', () => this.rescale());
+    }
+    setupKeyboardNav() {
+        document.addEventListener('keydown', e => {
+            if (document.body.classList.contains('editing')) return;
+            if (e.target.closest && e.target.closest('button')) { if (e.key === ' ' || e.key === 'Enter') return; }
+            if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'Enter'].includes(e.key)) { e.preventDefault(); this.next(); }
+            if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); this.prev(); }
+            if (e.key === 'Home') this.show(0);
+            if (e.key === 'End') this.show(this.slides.length - 1);
+        });
+    }
+    setupTouchNav() {
+        let x0 = null;
+        addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+        addEventListener('touchend', e => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0;
+            if (Math.abs(dx) > 40) dx < 0 ? this.next() : this.prev();
+            x0 = null;
+        });
+    }
+    setupWheelNav() {
+        let lock = false;
+        addEventListener('wheel', e => {
+            // Let the presenter scroll long notes without changing slides
+            if (e.target.closest && e.target.closest('#pvNotes')) return;
+            if (lock || Math.abs(e.deltaY) < 30) return;
+            lock = true; setTimeout(() => lock = false, 700);
+            e.deltaY > 0 ? this.next() : this.prev();
+        }, { passive: true });
+    }
+    next() { this.show(this.current + 1); }
+    prev() { this.show(this.current - 1); }
+    // remote = true when the change came from the other window (don't echo it back)
+    show(i, remote = false) {
+        i = Math.max(0, Math.min(i, this.slides.length - 1));
+        if (remote && i === this.current && this.slides[i].classList.contains('active')) return;
+        this.current = i;
+        this.slides.forEach((s, j) => {
+            const on = j === this.current;
+            s.classList.toggle('active', on);
+            // Re-trigger reveals by removing .visible, then adding on next frame
+            s.classList.remove('visible');
+        });
+        const cur = this.slides[this.current];
+        requestAnimationFrame(() => requestAnimationFrame(() => cur.classList.add('visible')));
+        this.progress.style.width = ((this.current + 1) / this.slides.length * 100) + '%';
+        history.replaceState(null, '', '#' + (this.current + 1));
+        this.onChange(this.current, remote);
+    }
+}
+const deck = new SlidePresentation();
+
+/* ===========================================
+   AUDIENCE ⇄ PRESENTER SYNC
+   postMessage between the two windows (works from file://),
+   plus BroadcastChannel as a fallback when served over http.
+   =========================================== */
+const SYNC_ID = 'after-the-pull-request';
+let peer = null;   // the other window (presenter popup, or the audience opener)
+let channel = null;
+try { channel = new BroadcastChannel(SYNC_ID); } catch (e) {}
+
+function sendSlide(i) {
+    const msg = { deck: SYNC_ID, type: 'goto', i };
+    try { if (peer && !peer.closed) peer.postMessage(msg, '*'); } catch (e) {}
+    try { channel && channel.postMessage(msg); } catch (e) {}
+}
+function handleSync(data, source) {
+    if (!data || data.deck !== SYNC_ID) return;
+    if (source && source !== window) peer = source;
+    // 'hello' just re-links the peer window (handled above); 'goto' changes slide
+    if (data.type === 'goto') deck.show(data.i, true);
+}
+addEventListener('message', e => handleSync(e.data, e.source));
+if (channel) channel.onmessage = e => handleSync(e.data, null);
+
+const presenterHook = { update: () => {} };
+deck.onChange = (i, remote) => {
+    if (!remote) sendSlide(i);
+    presenterHook.update(i);
+};
+
+// Press P (audience window) to open the presenter view
+document.addEventListener('keydown', e => {
+    if ((e.key === 'p' || e.key === 'P') && !IS_PRESENTER && !e.target.isContentEditable && !e.metaKey && !e.ctrlKey) {
+        const url = location.href.split('#')[0].split('?')[0] + '?presenter#' + (deck.current + 1);
+        peer = window.open(url, 'after-pr-presenter', 'width=1440,height=900');
+        if (!peer) toast('Allow pop-ups to open the presenter view');
+    }
+});
+
+/* ===========================================
+   PRESENTER VIEW
+   Current slide (live), next slide preview, talk track, timer, clock.
+   =========================================== */
+if (IS_PRESENTER) {
+    document.title = 'Presenter · ' + document.title;
+    document.body.classList.add('presenter');
+    const pv = document.getElementById('pv');
+    pv.hidden = false;
+
+    // Move the live stage into the NOW pane
+    const nowPane = document.getElementById('pvCurrent');
+    nowPane.appendChild(deck.stage);
+    deck.host = nowPane;
+
+    const nextPane = document.getElementById('pvNextSlide');
+    const notesEl = document.getElementById('pvNotes');
+    const countEl = document.getElementById('pvCount');
+
+    presenterHook.update = i => {
+        countEl.textContent = String(i + 1).padStart(2, '0') + ' / ' + slides.length;
+        // Notes: exact talk track for this slide
+        const text = (slides[i].querySelector('.notes') || {}).textContent || '';
+        notesEl.textContent = text || '(no talk track for this slide)';
+        notesEl.classList.toggle('empty', !text);
+        notesEl.scrollTop = 0;
+        // Next slide preview: a static clone in its own scaled stage
+        nextPane.innerHTML = '';
+        if (i + 1 < slides.length) {
+            const stage = document.createElement('div');
+            stage.className = 'deck-stage';
+            const clone = slides[i + 1].cloneNode(true);
+            clone.classList.add('active', 'visible');
+            clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+            stage.appendChild(clone);
+            nextPane.appendChild(stage);
+            fitStage(stage, nextPane);
+        } else {
+            nextPane.innerHTML = '<div class="pv-end">— end of deck —</div>';
+        }
+    };
+    presenterHook.update(deck.current);
+
+    const rescaleAll = () => {
+        deck.rescale();
+        const s = nextPane.querySelector('.deck-stage');
+        if (s) fitStage(s, nextPane);
+    };
+    addEventListener('resize', rescaleAll);
+    requestAnimationFrame(rescaleAll);
+
+    // Buttons
+    document.getElementById('pvPrev').onclick = () => deck.prev();
+    document.getElementById('pvNext').onclick = () => deck.next();
+    let fontPx = 28;
+    try { fontPx = parseInt(localStorage.getItem('after-pr-notes-font'), 10) || 28; } catch (e) {}
+    const setFont = px => {
+        fontPx = Math.max(16, Math.min(56, px));
+        notesEl.style.setProperty('--pv-font', fontPx + 'px');
+        try { localStorage.setItem('after-pr-notes-font', fontPx); } catch (e) {}
+    };
+    setFont(fontPx);
+    document.getElementById('pvSmaller').onclick = () => setFont(fontPx - 2);
+    document.getElementById('pvBigger').onclick = () => setFont(fontPx + 2);
+
+    // Timer (click to reset) + wall clock
+    let t0 = Date.now();
+    const timerEl = document.getElementById('pvTimer');
+    const clockEl = document.getElementById('pvClock');
+    timerEl.onclick = () => { t0 = Date.now(); };
+    const tick = () => {
+        const s = Math.floor((Date.now() - t0) / 1000);
+        timerEl.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+        clockEl.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    };
+    tick(); setInterval(tick, 1000);
+
+    // Connect to the audience window; keep re-announcing so a reloaded audience window re-links
+    peer = window.opener;
+    const hello = () => {
+        const msg = { deck: SYNC_ID, type: 'hello' };
+        try { if (peer && !peer.closed) peer.postMessage(msg, '*'); } catch (e) {}
+        try { channel && channel.postMessage(msg); } catch (e) {}
+    };
+    hello(); setInterval(hello, 2000);
+}
+
+/* ===========================================
+   INLINE EDITING — hover top-left corner or press E.
+   Edits auto-save to localStorage; Ctrl/Cmd+S downloads the edited HTML.
+   =========================================== */
+const editor = {
+    isActive: false,
+    key: 'after-pr-edits',
+    targets() { return document.querySelectorAll('.slide h1, .slide h2, .slide h3, .slide .lede, .slide .prompt, .slide .year, .slide .list li, .slide .card p, .slide .lbl, .slide .term'); },
+    init() {
+        this.targets().forEach((el, i) => el.dataset.editable = i);
+        try {
+            const saved = JSON.parse(localStorage.getItem(this.key) || '{}');
+            this.targets().forEach(el => { if (saved[el.dataset.editable] != null) el.innerHTML = saved[el.dataset.editable]; });
+        } catch (e) {}
+    },
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        document.getElementById('editToggle').classList.toggle('active', this.isActive);
+        document.getElementById('editToggle').textContent = this.isActive ? 'DONE' : 'EDIT';
+        this.targets().forEach(el => el.contentEditable = this.isActive);
+        if (!this.isActive) this.save();
+        toast(this.isActive ? 'Edit mode on — click any text' : 'Edits saved');
+    },
+    save() {
+        const data = {};
+        this.targets().forEach(el => data[el.dataset.editable] = el.innerHTML);
+        try { localStorage.setItem(this.key, JSON.stringify(data)); } catch (e) {}
+    },
+    download() {
+        this.save();
+        const clone = document.documentElement.cloneNode(true);
+        clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+        clone.querySelector('body').classList.remove('editing');
+        // Strip injected chrome so it isn't duplicated on reload
+        clone.querySelectorAll('.chrome, .status').forEach(el => el.remove());
+        const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML], { type: 'text/html' });
+        const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'index.html' });
+        a.click();
+        toast('Downloaded edited deck');
+    }
+};
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1800);
+}
+editor.init();
+
+const editToggle = document.getElementById('editToggle');
+const hotzone = document.querySelector('.edit-hotzone');
+let hideTimeout = null;
+editToggle.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+hotzone.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+document.addEventListener('keydown', e => {
+    if ((e.key === 'e' || e.key === 'E') && !e.target.isContentEditable) editor.toggleEditMode();
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); editor.download(); }
+    if (e.key === 'Escape' && editor.isActive) editor.toggleEditMode();
+});
+document.addEventListener('input', () => editor.isActive && editor.save());
+</script>
+</body>
+</html>
